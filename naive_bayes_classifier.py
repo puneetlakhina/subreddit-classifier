@@ -6,6 +6,10 @@ import math
 import getopt
 import sys
 import reddit
+import logging
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
+
 class NaiveBayesClassifier:
     def __init__(self, cache_dir="./.classifiers-data/naive-bayes"):
         self.cache_dir = cache_dir
@@ -37,27 +41,30 @@ class NaiveBayesClassifier:
     def classify(self, url, content):
         words = utils.read_cached(self.cache_dir + "/" + utils.get_hash(url) ,self.preprocessor.process, content)
         argmax = {"label":None, "prob":None}
+        probs = {}
         for label,label_data in self.labels_metadata.iteritems():
             prob_sum=0.0
             for word in words:
                 tot_doc_count = len(label_data["doc_ids"])
                 if word in label_data["word_doc_counts"]:
-                    prob_sum = prob_sum + math.log(float(label_data["word_doc_counts"][word])/tot_doc_count)
-            
+                    prob_sum = prob_sum + math.log(float(label_data["word_doc_counts"][word]))/tot_doc_count
+            probs[label] = prob_sum
             if not argmax["prob"] or prob_sum > argmax["prob"]:
                 argmax["prob"] = prob_sum
                 argmax["label"] = label
-        print argmax
-help_str="%s -t training_set_size\n-c cross_validation_set_size\n-s subreddits(comma separated).May be specified multiple times\n-h help\n-v Verbose\n" % (sys.argv[0])
-verbose=False
+        logger.debug("URl: %s, debuginfo: %s " % (url,str(probs)))
+        return argmax
+help_str=sys.argv[0] + """
+-t training_set_size
+-c cross_validation_set_size
+-s subreddits(comma separated).May be specified multiple times
+-h help
+"""
 def usage(extra_str=""):
     global help_str
     sys.stderr.write(extra_str + "\n")
     sys.stderr.write(help_str)
     exit(1)
-def debugop(s):
-    if verbose:
-        print str(s + "\n")
 if __name__ == "__main__":
     ts = 0
     cv = 0
@@ -73,29 +80,26 @@ if __name__ == "__main__":
                 subreddits.extend(map(lambda x:x.strip(), val.split(",")))
             elif opt == "-h":
                 usage()
-            elif opt == "-v":
-                verbose=True
-        if ts == 0:
-            usage("No Training set size specified")
-        if cv == 0:
-            usage("No Cross validation set size specified")
+        if ts == 0 and cv == 0:
+            usage("One of training/cross validation set size must be specified")
         if len(subreddits) == 0:
             usage("No subreddits specified\n")
         classifier = NaiveBayesClassifier()
         content_fetcher = crawler.CachedContentFetcher()
         ragent = reddit.Reddit(user_agent="subreddit-classifier")
-        for subreddit in subreddits:    
-            debugop("Training for subreddit: %s" % subreddit)
-            subred_manager = crawler.SubredditContentManager(subreddit,ragent)
-            for url,content in subred_manager.get_subred_content(content_fetcher=content_fetcher,nstories=ts):
-                debugop("URL:%s" % str(url)) 
-                classifier.train(url, content, subreddit)
-        debugop("Cross validation");
-        for subreddit in subreddits:
-            subred_manager = crawler.SubredditContentManager(subreddit,ragent)
-            for url,content in subred_manager.get_subred_content(content_fetcher=content_fetcher,nstories=cv,new=True):
-                print "Real Class:%s" % subreddit
-                classifier.classify(url, content)
+        if ts > 0:
+            for subreddit in subreddits:    
+                logger.debug("Training for subreddit: %s" % subreddit)
+                subred_manager = crawler.SubredditContentManager(subreddit,ragent)
+                for url,content in subred_manager.get_subred_content(content_fetcher=content_fetcher,nstories=ts):
+                    logging.debug("URL:%s" % str(url)) 
+                    classifier.train(url, content, subreddit)
+        if cv > 0:
+            logger.debug("Cross validation");
+            for subreddit in subreddits:
+                subred_manager = crawler.SubredditContentManager(subreddit,ragent)
+                for url,content in subred_manager.get_subred_content(content_fetcher=content_fetcher,nstories=cv,new=True):
+                    print "Real Class:%s url:%s Classification: %s" % (subreddit,url, str(classifier.classify(url, content)))
     except getopt.GetoptError, err:
         usage()
     

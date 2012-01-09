@@ -7,8 +7,13 @@ import reddit
 import sys
 import re
 import utils
+import logging
+logger = logging.getLogger(__name__)
 class SubredditContentManager:
-    def __init__(self,subred,ragent=None, metadata_dir="./.crawler-data/subreddit-data/", ignored_domains=["www.reddit.com","imgur.com","www.imgur.com","www.youtube.com"]):
+    """
+    Fetch content associated with a subreddit
+    """
+    def __init__(self,subred,ragent=None, metadata_dir="./.crawler-data/subreddit-data/", ignored_domains=["reddit.com","imgur.com","youtube.com","fbcdn.net"]):
         self.subred = subred
         self.ragent = ragent
         self.metadata_dir = metadata_dir
@@ -18,50 +23,56 @@ class SubredditContentManager:
             os.makedirs(dname) 
         self.fname = dname + "/data"
 
-    def new_stories(self,nstories=25):
+    def __new_stories(self,nstories=25):
         cnt = 0
-        for story in self.ragent.get_subreddit(self.subred).get_top(limit=None):
-            if re.findall("://(.*?)/",story.url + "/")[0] in self.ignored_domains:
+        stories = self.ragent.get_subreddit(self.subred).get_top(limit=None)
+        while cnt <= nstories:
+            story = stories.next()
+            domain = re.findall("://(.*?)/",story.url + "/")[0]
+            is_ignored = False
+            for ignored_domain in self.ignored_domains:
+                if domain.find(ignored_domain) != -1:
+                    is_ignored = True
+            if is_ignored:
+                logging.debug("Ignoring:" + story.url)
                 continue
             else:
+                cnt = cnt + 1
                 yield story
 
-    def load_data(self):
+    def __load_data(self):
         if os.path.isfile(self.fname):
             return utils.unpickled_content(self.fname)
         else:
             data={"subreddit":self.subred, "nstories":0,"urls":[]}
-            self.save_data(data)
+            self.__save_data(data)
             return data
 
-    def save_data(self,data):
+    def __save_data(self,data):
         utils.save_pickled(self.fname,data)
     
-    def get_urls(self,limit=25):
-        data=self.load_data()
+    def __get_urls(self,limit=25):
+        data=self.__load_data()
         return data["urls"][:limit]
     """
     Returns an iterator for the content of upto nstories from this subreddit. if you specify new = True then tries to fetch upto nstories new stories
     """
     def get_subred_content(self,nstories=25,new=False,content_fetcher=None):
-        data=self.load_data()
+        data=self.__load_data()
         urls=[]
         tofetch = nstories
-        print "nstories to fetch = %d" % nstories
         if not new:
             urls = data["urls"][-nstories:]
             tofetch = nstories - len(urls)
-        print " tofetch = %d" % tofetch
         if tofetch > 0:
-            print "Fetching new stories from reddit"
-            for story in self.new_stories(tofetch):
-                if story.url:
+            logger.debug("Fetching %d new stories from reddit and fetching their content " % tofetch)
+            for story in self.__new_stories(tofetch):
+                if story.url and content_fetcher.fetch(story.url):
                     urls.append(story.url)
                     if not story.url in data["urls"]:
                         data["nstories"] = data["nstories"] + 1
                         data["urls"].append(story.url)
-        self.save_data(data)
-        print "URLs = %s" % "\n".join(urls)
+        self.__save_data(data)
         for url in urls:
             yield (url,content_fetcher.fetch(url))
 
@@ -79,14 +90,14 @@ class CachedContentFetcher:
             try_cnt = 0
             while try_cnt < self.retry:
                 try:
-                    print "Fetching: %s" % url
+                    logger.debug("Fetching: %s" % url)
                     content = urllib2.urlopen(url).read()
                     f=open(fname,"w")
                     f.write(content)
                     f.close()
                     break
                 except urllib2.URLError,e:
-                    print "Error while fetching URL: %s. Error: %s" % (url,e.reason)
+                    print "Error while fetching URL: %s. Error: %s" % (url,str(e))
                     time.sleep(self.retry_wait)
             if try_cnt >= self.retry:
                 print "Failed to fetch URL: %s" % (url)
