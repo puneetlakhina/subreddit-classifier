@@ -15,7 +15,7 @@ class NaiveBayesClassifier:
         self.cache_dir = cache_dir
         if not os.path.isdir(cache_dir):
             os.makedirs(self.cache_dir)
-        self.preprocessor = ChainedPreprocessor([HtmlPreprocessor(),WordSplitterPreprocessor(),StemmerPreprocessor(),StopWordRemovePreprocessor()])
+        self.preprocessor = ChainedPreprocessor([HtmlPreprocessor(),WordSplitterPreprocessor(),StemmerPreprocessor(), WordDeduper(), StopWordRemovePreprocessor()])
         self.labels_metadata_fname = self.cache_dir + "/labels.metadata"
         self.labels_metadata = utils.read_cached(self.labels_metadata_fname, lambda:{})
     def save_metadata(self):
@@ -33,7 +33,6 @@ class NaiveBayesClassifier:
             return;
         else:
             label_metadata["doc_ids"].append(docid)
-            words = set(words) #deduplication of words.
             for word in words:
                 label_metadata["word_doc_counts"].setdefault(word,1)
                 label_metadata["word_doc_counts"][word] = label_metadata["word_doc_counts"][word] + 1
