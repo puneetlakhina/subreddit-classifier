@@ -8,13 +8,13 @@ class ChainedPreprocessor:
         self.processor_chain = processor_chain
     def process(self,content):
         if not content:
-            print "No content"
+            logger.warn("No content")
             return;
         original_content = content
         for processor in self.processor_chain:
             content = processor.process(content)
             if not content:
-                print "No content returned by %s. Original %s" % (str(processor), original_content)
+                logger.warn("No content returned by %s." % (str(processor)))
         return content
 """
 Converts HTML content of a page into text elements only

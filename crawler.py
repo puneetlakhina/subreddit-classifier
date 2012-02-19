@@ -13,7 +13,7 @@ class SubredditContentManager:
     """
     Fetch content associated with a subreddit
     """
-    def __init__(self,subred,ragent=None, metadata_dir="./.crawler-data/subreddit-data/", ignored_domains=["reddit.com","imgur.com","youtube.com","fbcdn.net"]):
+    def __init__(self,subred,ragent=None, metadata_dir="./.crawler-data/subreddit-data/", ignored_domains=["reddit.com","imgur.com","youtube.com"], ignored_content_types=["image","application/pdf"]):
         self.subred = subred
         self.ragent = ragent
         self.metadata_dir = metadata_dir
@@ -22,6 +22,7 @@ class SubredditContentManager:
         if not os.path.isdir(dname):
             os.makedirs(dname) 
         self.fname = dname + "/data"
+        self.ignored_content_types=ignored_content_types
 
     def __new_stories(self,nstories=25):
         cnt = 0
@@ -33,9 +34,21 @@ class SubredditContentManager:
             is_ignored = False
             for ignored_domain in self.ignored_domains:
                 if domain.find(ignored_domain) != -1:
-                    is_ignored = True
+                    logging.warn("Ignoring: %s because of ignored domain: %s" % (story.url,ignored_domain))
+                    is_ignored=True
+                    break
             if is_ignored:
-                logging.debug("Ignoring:" + story.url)
+                continue
+            
+            ctype=get_content_type(story.url)
+            if not ctype:
+                continue
+            for ignored_ctype in self.ignored_content_types:
+                if ctype.find(ignored_ctype) != -1:
+                    logger.warn("Ignoring: %s because of content type: %s matching ignored type:%s" % (story.url,ctype,ignored_ctype))
+                    is_ignored = True
+                    break
+            if is_ignored:
                 continue
             else:
                 cnt = cnt + 1
@@ -77,6 +90,15 @@ class SubredditContentManager:
         for url in urls:
             yield (url,content_fetcher.fetch(url))
 
+class HeadRequest(urllib2.Request):
+    def get_method(self):
+        return "HEAD"
+def get_content_type(url):
+    try:
+        response = urllib2.urlopen(HeadRequest(url))
+        return response.headers.get('content-type')
+    except urllib2.URLError,e:
+        logger.warn("Cant get content type for URL:%s" % (url))
 class CachedContentFetcher:
     def __init__(self,storage_dir="./.crawler-data/content/", retry=3,retry_wait=0.1):
         self.storage_dir = storage_dir
@@ -84,7 +106,6 @@ class CachedContentFetcher:
             os.makedirs(self.storage_dir)
         self.retry = retry
         self.retry_wait = retry_wait
-
     def fetch(self,url):
         fname = self.storage_dir + "/" + utils.get_hash(url)
         if not os.path.isfile(fname):
