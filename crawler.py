@@ -27,6 +27,7 @@ class SubredditContentManager:
         cnt = 0
         stories = self.ragent.get_subreddit(self.subred).get_top(limit=None)
         while cnt <= nstories:
+            logger.debug("Done %d of %d" % (cnt,nstories))
             story = stories.next()
             domain = re.findall("://(.*?)/",story.url + "/")[0]
             is_ignored = False
@@ -98,6 +99,7 @@ class CachedContentFetcher:
                     break
                 except urllib2.URLError,e:
                     print "Error while fetching URL: %s. Error: %s" % (url,str(e))
+                    try_cnt = try_cnt + 1
                     time.sleep(self.retry_wait)
             if try_cnt >= self.retry:
                 print "Failed to fetch URL: %s" % (url)
