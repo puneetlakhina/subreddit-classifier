@@ -1,6 +1,8 @@
 from BeautifulSoup import BeautifulSoup
 from stemming.porter2 import stem
 import re
+import logging
+logger = logging.getLogger(__name__)
 class ChainedPreprocessor:
     def __init__(self,processor_chain):
         self.processor_chain = processor_chain
@@ -47,8 +49,27 @@ class StopWordRemovePreprocessor:
     stop_words=set([word.strip() for word in stop_words])
     def process(self,content):
         if content:
-            return filter(lambda x:x.strip() and x.lower() not in StopWordRemovePreprocessor.stop_words,content)
-        
+            return filter(lambda x:x.strip().lower() not in StopWordRemovePreprocessor.stop_words,content)
+
+"""
+Removes words that are just numbers from the word set
+"""
+class NumeralRemover:
+    def process(self,content):
+        if content:
+            return filter(lambda x:not self.is_int(x), content)
+    def is_int(self,x):
+        try:
+            logger.debug("x=%s" % x)
+            int(x)
+            return True
+        except ValueError:
+            return False
+                        
+class WordDeduper:
+    def process(self,content):
+        if content:
+            return set(content)
 """
 Stem the list of words using porter2
 """
